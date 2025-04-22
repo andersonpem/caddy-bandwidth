@@ -16,22 +16,23 @@ import (
 // - "5G" or "5GB" = 5 gigabytes per second = 5*1024*1024*1024 bytes
 // - "5g" or "5Gb" = 5 gigabits per second = 5*1024*1024*1024/8 bytes
 // - "500" = 500 bytes per second
+// - "1.5M" = 1.5 megabytes per second
 func parseHumanReadableBandwidth(input string) (int, error) {
-	// Trim whitespace and convert to uppercase for easier handling
+	// Trim whitespace
 	input = strings.TrimSpace(input)
 
-	// Simple case: just a number
+	// Simple case: just a number (bytes per second)
 	if matched, _ := regexp.MatchString(`^\d+$`, input); matched {
 		return strconv.Atoi(input)
 	}
 
 	// Regular expression to match a number followed by a unit
 	// Captures: [1]=number, [2]=unit
-	re := regexp.MustCompile(`^(\d+(?:\.\d+)?)\s*([KkMmGg][Bb]?)$`)
+	re := regexp.MustCompile(`^(\d+(?:\.\d+)?)\s*([KkMmGgTt][Bb]?)$`)
 	matches := re.FindStringSubmatch(input)
 
 	if matches == nil {
-		return 0, fmt.Errorf("invalid bandwidth format: %s", input)
+		return 0, fmt.Errorf("invalid bandwidth format: %s (expected format like '5M', '10KB', etc.)", input)
 	}
 
 	// Parse the number part
@@ -40,26 +41,31 @@ func parseHumanReadableBandwidth(input string) (int, error) {
 		return 0, fmt.Errorf("invalid number in bandwidth: %s", matches[1])
 	}
 
-	// Parse the unit part
+	// Extract the unit and determine if it's bits or bytes
 	unit := strings.ToLower(matches[2])
-	isBits := strings.HasSuffix(unit, "b") && unit != "kb" && unit != "mb" && unit != "gb"
+	unitChar := unit[0]
+	isBits := len(unit) > 1 && unit[1] == 'b' && unit != "b"
 
-	// Calculate bytes based on unit
-	var bytes float64
-	switch unit[0] {
+	// Calculate bytes based on unit prefix (k, m, g, t)
+	var multiplier float64
+	switch unitChar {
 	case 'k':
-		bytes = value * 1024
+		multiplier = 1024
 	case 'm':
-		bytes = value * 1024 * 1024
+		multiplier = 1024 * 1024
 	case 'g':
-		bytes = value * 1024 * 1024 * 1024
+		multiplier = 1024 * 1024 * 1024
+	case 't':
+		multiplier = 1024 * 1024 * 1024 * 1024
 	default:
-		return 0, fmt.Errorf("unknown unit in bandwidth: %s", unit)
+		return 0, fmt.Errorf("unknown unit prefix in bandwidth: %s", unit)
 	}
 
-	// If the unit is bits, convert to bytes
+	bytes := value * multiplier
+
+	// Convert bits to bytes if needed
 	if isBits {
-		bytes = bytes / 8
+		bytes /= 8
 	}
 
 	return int(bytes), nil
